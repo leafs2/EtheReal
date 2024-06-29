@@ -8,7 +8,7 @@ import { Provider } from './provider';
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "My-First-DApp",
+  title: "EtheReal",
   description: "XueDAO hackathon frontend workshop",
 };
 
