@@ -1,0 +1,1 @@
+export const houseAssetAddress: `0x${string}` = "0x93206a8EeFa7dcc19eb0741e6B1D73a9f54aee6C"
