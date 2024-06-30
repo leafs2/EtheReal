@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useAccount, useReadContract, useWriteContract, useWaitForTransactionReceipt } from 'wagmi';
 import { etheRealAddress } from '@/contract/address/etheRealAddress';
 import { houseAssetAddress } from '@/contract/address/houseAssetAddress';
@@ -12,38 +12,64 @@ import Swal from 'sweetalert2';
 import TokenImage from '@/components/TokenImage';
 import Image from 'next/image'; // Ensure you're using the correct import
 
-export default function PropertyManagement() {
-  const [showMintModal, setShowMintModal] = useState(false);
-  const [showStakeModal, setShowStakeModal] = useState(false);
-  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
-  const { address, isConnected } = useAccount();
-  
-  const { data: userNFTs, refetch: refetchUserNFTs } = useReadContract({
+// 自定义 Hook 用于获取 NFT 数据
+function useNFTData(address: string | undefined) {
+  const { data: userNFTCount } = useReadContract({
     address: houseAssetAddress,
     abi: HouseAssetABI,
     functionName: 'balanceOf',
     args: [address],
   });
 
-  const { data: tokenURI } = useReadContract({
-    address: houseAssetAddress,
-    abi: HouseAssetABI,
-    functionName: 'tokenIdToURI',
-    args: [1],
-  });
-  
-  const { data: ownerAddress } = useReadContract({
-    address: houseAssetAddress,
-    abi: HouseAssetABI,
-    functionName: 'ownerOf',
-    args: [1],
-  });
+  const [nfts, setNfts] = useState<any[]>([]);
 
-  const { data: nextTokenId } = useReadContract({
-    address: houseAssetAddress,
-    abi: HouseAssetABI,
-    functionName: 'nextTokenId',
-  });
+  useEffect(() => {
+    const fetchNFTData = async () => {
+      if (userNFTCount && address) {
+        const count = Number(userNFTCount);
+        const promises = Array.from({ length: count }).map(async (_, i) => {
+          const tokenId = await useReadContract({
+            address: houseAssetAddress,
+            abi: HouseAssetABI,
+            functionName: 'tokenOfOwnerByIndex',
+            args: [address, i],
+          });
+
+          const tokenURI = await useReadContract({
+            address: houseAssetAddress,
+            abi: HouseAssetABI,
+            functionName: 'tokenIdToURI',
+            args: [tokenId],
+          });
+
+          const ownerAddress = await useReadContract({
+            address: houseAssetAddress,
+            abi: HouseAssetABI,
+            functionName: 'ownerOf',
+            args: [tokenId],
+          });
+
+          return { tokenId, tokenURI, ownerAddress };
+        });
+
+        const results = await Promise.all(promises);
+        setNfts(results);
+      }
+    };
+
+    fetchNFTData();
+  }, [userNFTCount, address]);
+
+  return nfts;
+}
+
+export default function PropertyManagement() {
+  const [showMintModal, setShowMintModal] = useState(false);
+  const [showStakeModal, setShowStakeModal] = useState(false);
+  const [showWithdrawModal, setShowWithdrawModal] = useState(false);
+  const { address, isConnected } = useAccount();
+
+  const nfts = useNFTData(address);
 
   const { writeContract: mintNFT, data: mintData } = useWriteContract();
   const { writeContract: stakeNFT, data: stakeData } = useWriteContract();
@@ -69,8 +95,6 @@ export default function PropertyManagement() {
     }
   };
 
-  const tokenURIString = tokenURI?.toString() || 'No URI available';
-
   const handleWithdraw = async (tokenId: number, isNFT: boolean) => {
     try {
       await withdraw({
@@ -91,9 +115,8 @@ export default function PropertyManagement() {
         title: 'Transaction Successful!',
         icon: 'success',
       });
-      refetchUserNFTs();
     }
-  }, [isMinted, isStaked, isWithdrawn, isApproved, refetchUserNFTs]);
+  }, [isMinted, isStaked, isWithdrawn, isApproved]);
 
   if (!isConnected) {
     return (
@@ -124,9 +147,11 @@ export default function PropertyManagement() {
         <div className="mt-8">
           <h2 className="text-4xl font-bold mb-4 text-gray-900">你的房地產 NFT</h2>
           <div>
-            {tokenURIString !== 'No URI available' && ownerAddress === address && (
-              <TokenImage tokenURI={tokenURIString} tokenId={(Number(nextTokenId) - 1)} ownerAddress={ownerAddress as string} />
-            )}
+            {nfts.map((nft, index) => (
+              nft.ownerAddress === address && (
+                <TokenImage key={index} tokenURI={nft.tokenURI} tokenId={nft.tokenId} ownerAddress={nft.ownerAddress} />
+              )
+            ))}
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {/* Add additional NFT details or components here if needed */}
